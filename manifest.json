@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Memory Cleaner",
+  "version": "1.0.0",
+  "description": "Right-click any tab to free memory. Discard, clear site data, or hard reload with one click.",
+  "permissions": [
+    "contextMenus",
+    "tabs",
+    "browsingData",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "minimum_chrome_version": "116"
+}

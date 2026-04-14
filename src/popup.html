@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=400">
+  <title>Tab Memory Cleaner</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 380px;
+      max-height: 500px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      color: #1a1a1a;
+      background: #fafafa;
+      overflow-y: auto;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a73e8, #0d47a1);
+      color: white;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header h1 {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .header .logo {
+      font-size: 22px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      padding: 12px 16px;
+      background: white;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat .number {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a73e8;
+    }
+
+    .stat .label {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .actions {
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .actions h2 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-align: left;
+    }
+
+    .btn:hover {
+      background: #f0f6ff;
+      border-color: #1a73e8;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn .icon { font-size: 18px; flex-shrink: 0; }
+    .btn .text { flex: 1; }
+    .btn .text .title { font-weight: 600; font-size: 13px; }
+    .btn .text .desc { font-size: 11px; color: #888; margin-top: 2px; }
+
+    .btn.danger { border-color: #ffcdd2; }
+    .btn.danger:hover { background: #fff5f5; border-color: #e53935; }
+
+    .tab-list {
+      padding: 8px 16px 16px;
+    }
+
+    .tab-list h2 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #888;
+      margin-bottom: 8px;
+    }
+
+    .tab-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: default;
+    }
+
+    .tab-item:hover { background: #f5f5f5; }
+
+    .tab-item .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .tab-item .dot.active { background: #4caf50; }
+    .tab-item .dot.discarded { background: #bdbdbd; }
+    .tab-item .dot.current { background: #1a73e8; }
+
+    .tab-item .tab-title {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tab-item .tab-host {
+      color: #999;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    .tab-item.is-discarded { opacity: 0.5; }
+
+    .history {
+      padding: 8px 16px 16px;
+      border-top: 1px solid #e0e0e0;
+    }
+
+    .history h2 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #888;
+      margin-bottom: 8px;
+    }
+
+    .history-item {
+      font-size: 11px;
+      color: #666;
+      padding: 3px 0;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .history-item .time { color: #999; }
+
+    .empty {
+      text-align: center;
+      color: #999;
+      padding: 20px;
+      font-size: 12px;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%) translateY(60px);
+      background: #323232;
+      color: white;
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      transition: transform 0.3s ease;
+      z-index: 100;
+      white-space: nowrap;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="logo">🧹</span>
+    <h1>Tab Memory Cleaner</h1>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="number" id="total">-</div>
+      <div class="label">Total</div>
+    </div>
+    <div class="stat">
+      <div class="number" id="active">-</div>
+      <div class="label">Active</div>
+    </div>
+    <div class="stat">
+      <div class="number" id="discarded">-</div>
+      <div class="label">Sleeping</div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <h2>Quick Actions (current tab)</h2>
+    <button class="btn" data-action="soft">
+      <span class="icon">⚡</span>
+      <span class="text">
+        <div class="title">Soft Clean</div>
+        <div class="desc">Hard reload — flushes JS memory</div>
+      </span>
+    </button>
+    <button class="btn" data-action="deep">
+      <span class="icon">🧹</span>
+      <span class="text">
+        <div class="title">Deep Clean</div>
+        <div class="desc">Clear cache + storage + reload (keeps login)</div>
+      </span>
+    </button>
+    <button class="btn danger" data-action="nuke">
+      <span class="icon">💣</span>
+      <span class="text">
+        <div class="title">Nuke & Reload</div>
+        <div class="desc">Clear EVERYTHING + reload (logs you out)</div>
+      </span>
+    </button>
+    <button class="btn" data-action="discard-others">
+      <span class="icon">💤</span>
+      <span class="text">
+        <div class="title">Discard Other Tabs</div>
+        <div class="desc">Put all other tabs to sleep</div>
+      </span>
+    </button>
+  </div>
+
+  <div class="tab-list">
+    <h2>Tabs in this window</h2>
+    <div id="tabs"></div>
+  </div>
+
+  <div class="history">
+    <h2>Recent actions</h2>
+    <div id="history"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
