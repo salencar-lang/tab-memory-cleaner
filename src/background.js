@@ -1,13 +1,9 @@
 /**
- * Tab Memory Cleaner v2.0 — Background Service Worker
+ * Tab Memory Cleaner v2.1 — Background Service Worker
  *
- * NEW in v2:
- *   - Real memory per tab via chrome.processes API
- *   - Badge showing total memory or tab count
- *   - Auto-discard tabs exceeding threshold
- *   - Notifications when a tab is memory-hogging
- *   - Whitelist support (never auto-discard certain sites)
- *   - Periodic memory monitoring via alarms
+ * Works on Chrome stable (Windows/Mac/Linux).
+ * Uses chrome.processes when available (Chrome OS/Dev),
+ * falls back gracefully on stable Chrome.
  */
 
 // ─── Default Settings ──────────────────────────────────────────────
@@ -15,8 +11,7 @@
 const DEFAULT_SETTINGS = {
   autoDiscard: false,
   autoDiscardThresholdMB: 500,
-  autoDiscardAfterMinutes: 10,
-  badgeMode: "memory", // "memory" | "tabs" | "off"
+  badgeMode: "tabs", // "tabs" | "off"
   notifyOnHeavyTab: true,
   heavyTabThresholdMB: 800,
   whitelist: ["meet.google.com", "zoom.us", "spotify.com", "music.youtube.com"],
@@ -24,17 +19,22 @@ const DEFAULT_SETTINGS = {
 
 let settings = { ...DEFAULT_SETTINGS };
 
+// Track if chrome.processes is available
+const HAS_PROCESSES = typeof chrome.processes !== "undefined";
+
 // ─── Init ──────────────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(async () => {
   await loadSettings();
   createContextMenus();
   setupAlarms();
+  updateBadge();
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   await loadSettings();
   setupAlarms();
+  updateBadge();
 });
 
 // ─── Settings ──────────────────────────────────────────────────────
@@ -49,7 +49,7 @@ async function saveSettings(newSettings) {
   await chrome.storage.sync.set({ settings });
 }
 
-// ─── Alarms (periodic monitoring) ──────────────────────────────────
+// ─── Alarms ────────────────────────────────────────────────────────
 
 function setupAlarms() {
   chrome.alarms.create("memory-check", { periodInMinutes: 1 });
@@ -67,90 +67,65 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 // ─── Memory Monitoring ─────────────────────────────────────────────
 
 /**
- * Get memory info for all tabs by mapping processes to tabs.
- * Returns array of { tabId, title, url, hostname, memoryMB, processId, active, discarded, pinned }
+ * Get tab info. Uses chrome.processes if available (Chrome OS/Dev),
+ * otherwise returns tabs without memory data (Chrome stable).
  */
 async function getTabsWithMemory() {
   const tabs = await chrome.tabs.query({});
   const tabsInfo = [];
 
-  try {
-    // Get all process info with memory
-    const processInfo = await chrome.processes.getProcessInfo([], true);
+  // Try chrome.processes (only works on Chrome OS / Dev channel)
+  let processMemoryMap = null;
+  if (HAS_PROCESSES) {
+    try {
+      const processInfo = await chrome.processes.getProcessInfo([], true);
+      processMemoryMap = {};
 
-    // Build processId -> memory map
-    const processMemory = {};
-    for (const [pid, proc] of Object.entries(processInfo)) {
-      if (proc.privateMemory) {
-        processMemory[pid] = proc.privateMemory / (1024 * 1024); // bytes -> MB
-      }
-    }
-
-    // Map tabs to their processes
-    for (const tab of tabs) {
-      let memoryMB = 0;
-      let processId = null;
-
-      // Try to find the process for this tab
       for (const [pid, proc] of Object.entries(processInfo)) {
         if (proc.tasks) {
           for (const task of proc.tasks) {
-            if (task.tabId === tab.id) {
-              processId = parseInt(pid);
-              memoryMB = processMemory[pid] || 0;
-              break;
+            if (task.tabId && proc.privateMemory) {
+              processMemoryMap[task.tabId] = proc.privateMemory / (1024 * 1024);
             }
           }
         }
-        if (processId) break;
       }
-
-      let hostname = "";
-      try {
-        hostname = new URL(tab.url || "").hostname;
-      } catch {}
-
-      tabsInfo.push({
-        tabId: tab.id,
-        windowId: tab.windowId,
-        index: tab.index,
-        title: tab.title || "Untitled",
-        url: tab.url || "",
-        hostname,
-        memoryMB: Math.round(memoryMB * 10) / 10,
-        processId,
-        active: tab.active,
-        discarded: tab.discarded,
-        pinned: tab.pinned,
-      });
-    }
-  } catch (err) {
-    // Fallback: processes API not available (e.g., some Chrome builds)
-    console.warn("[TMC] chrome.processes not available:", err.message);
-    for (const tab of tabs) {
-      let hostname = "";
-      try {
-        hostname = new URL(tab.url || "").hostname;
-      } catch {}
-
-      tabsInfo.push({
-        tabId: tab.id,
-        windowId: tab.windowId,
-        index: tab.index,
-        title: tab.title || "Untitled",
-        url: tab.url || "",
-        hostname,
-        memoryMB: 0,
-        processId: null,
-        active: tab.active,
-        discarded: tab.discarded,
-        pinned: tab.pinned,
-      });
+    } catch {
+      processMemoryMap = null;
     }
   }
 
-  // Sort by memory descending
-  tabsInfo.sort((a, b) => b.memoryMB - a.memoryMB);
+  for (const tab of tabs) {
+    let hostname = "";
+    try {
+      hostname = new URL(tab.url || "").hostname;
+    } catch {}
+
+    const memoryMB = processMemoryMap ? (processMemoryMap[tab.id] || 0) : 0;
+
+    tabsInfo.push({
+      tabId: tab.id,
+      windowId: tab.windowId,
+      index: tab.index,
+      title: tab.title || "Untitled",
+      url: tab.url || "",
+      hostname,
+      memoryMB: Math.round(memoryMB * 10) / 10,
+      memoryAvailable: processMemoryMap !== null,
+      active: tab.active,
+      discarded: tab.discarded,
+      pinned: tab.pinned,
+    });
+  }
+
+  // Sort: active first, then by memory (if available), then by index
+  tabsInfo.sort((a, b) => {
+    if (a.active !== b.active) return a.active ? -1 : 1;
+    if (a.discarded !== b.discarded) return a.discarded ? 1 : -1;
+    if (processMemoryMap) return b.memoryMB - a.memoryMB;
+    return a.index - b.index;
+  });
+
   return tabsInfo;
 }
 
@@ -162,13 +137,8 @@ async function getSystemMemory() {
     const info = await chrome.system.memory.getInfo();
     return {
       totalGB: Math.round((info.capacity / (1024 * 1024 * 1024)) * 10) / 10,
-      availableGB:
-        Math.round(
-          (info.availableCapacity / (1024 * 1024 * 1024)) * 10
-        ) / 10,
-      usedPercent: Math.round(
-        ((info.capacity - info.availableCapacity) / info.capacity) * 100
-      ),
+      availableGB: Math.round((info.availableCapacity / (1024 * 1024 * 1024)) * 10) / 10,
+      usedPercent: Math.round(((info.capacity - info.availableCapacity) / info.capacity) * 100),
     };
   } catch {
     return { totalGB: 0, availableGB: 0, usedPercent: 0 };
@@ -184,47 +154,15 @@ async function updateBadge() {
   }
 
   try {
-    const tabsInfo = await getTabsWithMemory();
-    const totalMemoryMB = tabsInfo.reduce((sum, t) => sum + t.memoryMB, 0);
-    const activeCount = tabsInfo.filter((t) => !t.discarded).length;
+    const tabs = await chrome.tabs.query({});
+    const activeCount = tabs.filter((t) => !t.discarded).length;
+    const total = tabs.length;
 
-    let text, color;
-
-    if (settings.badgeMode === "memory") {
-      if (totalMemoryMB >= 1000) {
-        text = `${(totalMemoryMB / 1000).toFixed(1)}G`;
-      } else {
-        text = `${Math.round(totalMemoryMB)}M`;
-      }
-      // Color based on memory pressure
-      if (totalMemoryMB > 4000) {
-        color = "#d32f2f"; // red
-      } else if (totalMemoryMB > 2000) {
-        color = "#f57c00"; // orange
-      } else {
-        color = "#388e3c"; // green
-      }
-    } else {
-      // tabs mode
-      text = `${activeCount}`;
-      color = activeCount > 20 ? "#d32f2f" : activeCount > 10 ? "#f57c00" : "#388e3c";
-    }
+    const text = `${activeCount}`;
+    const color = activeCount > 20 ? "#d32f2f" : activeCount > 10 ? "#f57c00" : "#388e3c";
 
     chrome.action.setBadgeText({ text });
     chrome.action.setBadgeBackgroundColor({ color });
-
-    // Check for heavy tabs and notify
-    if (settings.notifyOnHeavyTab) {
-      for (const tab of tabsInfo) {
-        if (
-          tab.memoryMB > settings.heavyTabThresholdMB &&
-          !tab.discarded &&
-          !tab.active
-        ) {
-          await notifyHeavyTab(tab);
-        }
-      }
-    }
   } catch (err) {
     console.error("[TMC] Badge update failed:", err.message);
   }
@@ -235,17 +173,18 @@ async function updateBadge() {
 const notifiedTabs = new Set();
 
 async function notifyHeavyTab(tab) {
-  // Don't spam — notify once per tab per session
   if (notifiedTabs.has(tab.tabId)) return;
   notifiedTabs.add(tab.tabId);
 
-  chrome.notifications.create(`heavy-${tab.tabId}`, {
-    type: "basic",
-    iconUrl: "icons/icon128.png",
-    title: `${tab.hostname} is using ${Math.round(tab.memoryMB)}MB`,
-    message: `This tab is consuming excessive memory. Click to deep clean it.`,
-    priority: 1,
-  });
+  try {
+    chrome.notifications.create(`heavy-${tab.tabId}`, {
+      type: "basic",
+      iconUrl: "icons/icon128.png",
+      title: `${tab.hostname} is using ${Math.round(tab.memoryMB)}MB`,
+      message: "This tab is consuming excessive memory. Click to deep clean it.",
+      priority: 1,
+    });
+  } catch {}
 }
 
 chrome.notifications.onClicked.addListener(async (notificationId) => {
@@ -261,14 +200,14 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
 // ─── Auto-Discard ──────────────────────────────────────────────────
 
 async function autoDiscardHeavyTabs() {
-  const tabsInfo = await getTabsWithMemory();
+  if (!HAS_PROCESSES) return; // Can't auto-discard without memory data
 
+  const tabsInfo = await getTabsWithMemory();
   for (const tab of tabsInfo) {
-    // Skip: active, pinned, discarded, whitelisted, or below threshold
     if (tab.active || tab.pinned || tab.discarded) continue;
     if (tab.memoryMB < settings.autoDiscardThresholdMB) continue;
     if (isWhitelisted(tab.hostname)) continue;
-    if (!isDiscardable(tab)) continue;
+    if (!isDiscardableUrl(tab.url)) continue;
 
     try {
       await chrome.tabs.discard(tab.tabId);
@@ -279,9 +218,7 @@ async function autoDiscardHeavyTabs() {
 
 function isWhitelisted(hostname) {
   return settings.whitelist.some(
-    (pattern) =>
-      hostname === pattern ||
-      hostname.endsWith(`.${pattern}`)
+    (pattern) => hostname === pattern || hostname.endsWith(`.${pattern}`)
   );
 }
 
@@ -343,20 +280,6 @@ function createContextMenus() {
       title: "\u27a1\ufe0f Discard Tabs to the Right",
       contexts: ["all"],
     });
-
-    chrome.contextMenus.create({
-      id: "tmc-sep2",
-      parentId: "tmc-parent",
-      type: "separator",
-      contexts: ["all"],
-    });
-
-    chrome.contextMenus.create({
-      id: "tmc-discard-by-memory",
-      parentId: "tmc-parent",
-      title: "\ud83d\udcc9 Discard Heaviest Tabs (>500MB)",
-      contexts: ["all"],
-    });
   });
 }
 
@@ -364,27 +287,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!tab || !tab.id) return;
 
   switch (info.menuItemId) {
-    case "tmc-soft":
-      await softClean(tab);
-      break;
-    case "tmc-deep":
-      await deepClean(tab);
-      break;
-    case "tmc-nuke":
-      await nukeAndReload(tab);
-      break;
-    case "tmc-discard-others":
-      await discardOtherTabs(tab);
-      break;
-    case "tmc-discard-left":
-      await discardDirectionalTabs(tab, "left");
-      break;
-    case "tmc-discard-right":
-      await discardDirectionalTabs(tab, "right");
-      break;
-    case "tmc-discard-by-memory":
-      await discardByMemory();
-      break;
+    case "tmc-soft": await softClean(tab); break;
+    case "tmc-deep": await deepClean(tab); break;
+    case "tmc-nuke": await nukeAndReload(tab); break;
+    case "tmc-discard-others": await discardOtherTabs(tab); break;
+    case "tmc-discard-left": await discardDirectionalTabs(tab, "left"); break;
+    case "tmc-discard-right": await discardDirectionalTabs(tab, "right"); break;
   }
 });
 
@@ -395,18 +303,10 @@ chrome.commands.onCommand.addListener(async (command) => {
   if (!tab) return;
 
   switch (command) {
-    case "soft-clean":
-      await softClean(tab);
-      break;
-    case "deep-clean":
-      await deepClean(tab);
-      break;
-    case "nuke-reload":
-      await nukeAndReload(tab);
-      break;
-    case "discard-others":
-      await discardOtherTabs(tab);
-      break;
+    case "soft-clean": await softClean(tab); break;
+    case "deep-clean": await deepClean(tab); break;
+    case "nuke-reload": await nukeAndReload(tab); break;
+    case "discard-others": await discardOtherTabs(tab); break;
   }
 });
 
@@ -421,6 +321,7 @@ async function softClean(tab) {
       await chrome.tabs.discard(tab.id);
       logAction("soft-clean (discarded)", tab);
     }
+    updateBadge();
   } catch (err) {
     console.error("[TMC] Soft clean failed:", err.message);
   }
@@ -449,6 +350,7 @@ async function deepClean(tab) {
 
     await chrome.tabs.reload(tab.id, { bypassCache: true });
     logAction("deep-clean", tab);
+    updateBadge();
   } catch (err) {
     console.error("[TMC] Deep clean failed:", err.message);
   }
@@ -479,6 +381,7 @@ async function nukeAndReload(tab) {
 
     await chrome.tabs.reload(tab.id, { bypassCache: true });
     logAction("nuke-and-reload", tab);
+    updateBadge();
   } catch (err) {
     console.error("[TMC] Nuke failed:", err.message);
   }
@@ -490,14 +393,12 @@ async function discardOtherTabs(activeTab) {
     let count = 0;
     for (const t of tabs) {
       if (t.id === activeTab.id || t.active || t.pinned) continue;
-      if (isDiscardable(t)) {
-        try {
-          await chrome.tabs.discard(t.id);
-          count++;
-        } catch {}
+      if (isDiscardableUrl(t.url) && !t.discarded) {
+        try { await chrome.tabs.discard(t.id); count++; } catch {}
       }
     }
     logAction(`discard-others (${count} tabs)`, activeTab);
+    updateBadge();
   } catch (err) {
     console.error("[TMC] Discard others failed:", err.message);
   }
@@ -508,40 +409,16 @@ async function discardDirectionalTabs(activeTab, direction) {
     const tabs = await chrome.tabs.query({ windowId: activeTab.windowId });
     let count = 0;
     for (const t of tabs) {
-      const isTarget =
-        direction === "left"
-          ? t.index < activeTab.index
-          : t.index > activeTab.index;
-      if (!isTarget || t.active || t.pinned) continue;
-      if (isDiscardable(t)) {
-        try {
-          await chrome.tabs.discard(t.id);
-          count++;
-        } catch {}
+      const isTarget = direction === "left" ? t.index < activeTab.index : t.index > activeTab.index;
+      if (!isTarget || t.active || t.pinned || t.discarded) continue;
+      if (isDiscardableUrl(t.url)) {
+        try { await chrome.tabs.discard(t.id); count++; } catch {}
       }
     }
     logAction(`discard-${direction} (${count} tabs)`, activeTab);
+    updateBadge();
   } catch (err) {
     console.error(`[TMC] Discard ${direction} failed:`, err.message);
-  }
-}
-
-async function discardByMemory() {
-  try {
-    const tabsInfo = await getTabsWithMemory();
-    let count = 0;
-    for (const tab of tabsInfo) {
-      if (tab.active || tab.pinned || tab.discarded) continue;
-      if (tab.memoryMB < 500) continue;
-      if (isWhitelisted(tab.hostname)) continue;
-      try {
-        await chrome.tabs.discard(tab.tabId);
-        count++;
-      } catch {}
-    }
-    logAction(`discard-by-memory (${count} tabs >500MB)`, { url: "bulk" });
-  } catch (err) {
-    console.error("[TMC] Discard by memory failed:", err.message);
   }
 }
 
@@ -557,24 +434,22 @@ function extractOrigin(url) {
   }
 }
 
-function isDiscardable(tab) {
-  if (!tab.url) return false;
-  const url = tab.url;
+function isDiscardableUrl(url) {
+  if (!url) return false;
   return (
     !url.startsWith("chrome://") &&
     !url.startsWith("chrome-extension://") &&
     !url.startsWith("devtools://") &&
-    !url.startsWith("edge://") &&
-    !tab.discarded
+    !url.startsWith("edge://")
   );
 }
 
 function logAction(action, tab) {
-  const entry = {
-    action,
-    url: tab.url ? (() => { try { return new URL(tab.url).hostname; } catch { return "unknown"; } })() : "unknown",
-    timestamp: new Date().toISOString(),
-  };
+  const hostname = (() => {
+    try { return new URL(tab.url || "").hostname; } catch { return "unknown"; }
+  })();
+
+  const entry = { action, url: hostname, timestamp: new Date().toISOString() };
 
   chrome.storage.local.get({ history: [] }, (data) => {
     const history = data.history;
@@ -583,7 +458,7 @@ function logAction(action, tab) {
     chrome.storage.local.set({ history });
   });
 
-  console.log(`[TMC] ${action} → ${entry.url}`);
+  console.log(`[TMC] ${action} → ${hostname}`);
 }
 
 // ─── Message handler ───────────────────────────────────────────────
@@ -591,10 +466,16 @@ function logAction(action, tab) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "get-tabs-memory") {
     (async () => {
-      const tabs = await getTabsWithMemory();
-      const system = await getSystemMemory();
-      const totalMB = tabs.reduce((s, t) => s + t.memoryMB, 0);
-      sendResponse({ tabs, system, totalMB });
+      try {
+        const tabs = await getTabsWithMemory();
+        const system = await getSystemMemory();
+        const totalMB = tabs.reduce((s, t) => s + t.memoryMB, 0);
+        const memoryAvailable = tabs.length > 0 && tabs[0].memoryAvailable;
+        sendResponse({ tabs, system, totalMB, memoryAvailable });
+      } catch (err) {
+        console.error("[TMC] get-tabs-memory failed:", err);
+        sendResponse({ tabs: [], system: { totalGB: 0, availableGB: 0, usedPercent: 0 }, totalMB: 0, memoryAvailable: false, error: err.message });
+      }
     })();
     return true;
   }
@@ -614,18 +495,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "action") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs[0]) return;
+      if (!tabs[0]) { sendResponse({ ok: false }); return; }
       const tab = tabs[0];
       const actions = {
         soft: softClean,
         deep: deepClean,
         nuke: nukeAndReload,
         "discard-others": discardOtherTabs,
-        "discard-by-memory": discardByMemory,
       };
       const fn = actions[msg.action];
-      if (fn) fn(tab).then(() => sendResponse({ ok: true }));
+      if (fn) {
+        fn(tab).then(() => sendResponse({ ok: true }));
+      } else {
+        sendResponse({ ok: false });
+      }
     });
+    return true;
+  }
+
+  if (msg.type === "action-tab") {
+    (async () => {
+      try {
+        const tab = await chrome.tabs.get(msg.tabId);
+        if (msg.action === "deep") {
+          await deepClean(tab);
+        } else if (msg.action === "discard") {
+          await chrome.tabs.discard(msg.tabId);
+          logAction("discard (manual)", tab);
+          updateBadge();
+        }
+        sendResponse({ ok: true });
+      } catch (err) {
+        sendResponse({ ok: false, error: err.message });
+      }
+    })();
     return true;
   }
 
@@ -637,5 +540,5 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// Initial badge update
+// Initial load
 loadSettings().then(() => updateBadge());

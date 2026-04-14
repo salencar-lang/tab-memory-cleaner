@@ -1,5 +1,6 @@
 /**
- * Tab Memory Cleaner v2.0 — Popup UI
+ * Tab Memory Cleaner v2.1 — Popup UI
+ * Works on Chrome stable (no chrome.processes dependency)
  */
 
 document.addEventListener("DOMContentLoaded", init);
@@ -7,8 +8,12 @@ document.addEventListener("DOMContentLoaded", init);
 async function init() {
   await loadData();
   bindActions();
+
+  // Settings button — open options page
   document.getElementById("settingsBtn").addEventListener("click", () => {
-    chrome.runtime.openOptionsPage();
+    chrome.runtime.openOptionsPage
+      ? chrome.runtime.openOptionsPage()
+      : chrome.tabs.create({ url: chrome.runtime.getURL("src/options.html") });
   });
 }
 
@@ -17,48 +22,57 @@ async function init() {
 async function loadData() {
   try {
     const data = await chrome.runtime.sendMessage({ type: "get-tabs-memory" });
-    if (!data) return;
-
+    if (!data || data.error) {
+      document.getElementById("tabList").innerHTML =
+        `<div class="loading" style="color:#e53935">Error: ${data?.error || "No response from background"}</div>`;
+      return;
+    }
     renderSystemBar(data);
-    renderTabList(data.tabs);
+    renderTabList(data.tabs, data.memoryAvailable);
   } catch (err) {
     document.getElementById("tabList").innerHTML =
-      `<div class="loading" style="color:#e53935">Error loading data: ${escapeHtml(err.message)}</div>`;
+      `<div class="loading" style="color:#e53935">Error: ${escapeHtml(err.message)}</div>`;
   }
 }
 
 function renderSystemBar(data) {
-  const { system, tabs, totalMB } = data;
+  const { system, tabs, totalMB, memoryAvailable } = data;
 
   // Memory ring
   const percent = system.usedPercent || 0;
   const ring = document.getElementById("memRing");
-  const circumference = 125.6; // 2 * PI * 20
+  const circumference = 125.6;
   ring.style.strokeDashoffset = circumference - (circumference * percent) / 100;
 
-  // Color based on pressure
   if (percent > 85) ring.style.stroke = "#d32f2f";
   else if (percent > 70) ring.style.stroke = "#f57c00";
   else ring.style.stroke = "#388e3c";
 
-  document.getElementById("memPercent").textContent = `${percent}%`;
+  document.getElementById("memPercent").textContent = percent > 0 ? `${percent}%` : "--";
+
   document.getElementById("sysRam").textContent =
-    `${system.availableGB}GB free / ${system.totalGB}GB`;
+    system.totalGB > 0
+      ? `${system.availableGB}GB free / ${system.totalGB}GB`
+      : "System memory unavailable";
 
   const activeCount = tabs.filter((t) => !t.discarded).length;
   const sleepCount = tabs.filter((t) => t.discarded).length;
   document.getElementById("tabCount").textContent =
     `${activeCount} active, ${sleepCount} sleeping`;
 
-  const totalFormatted =
-    totalMB >= 1000
+  if (memoryAvailable && totalMB > 0) {
+    const totalFormatted = totalMB >= 1000
       ? `${(totalMB / 1000).toFixed(1)} GB`
       : `${Math.round(totalMB)} MB`;
-  document.getElementById("tabMem").textContent = totalFormatted;
-  document.getElementById("totalMem").textContent = totalFormatted;
+    document.getElementById("tabMem").textContent = totalFormatted;
+    document.getElementById("totalMem").textContent = totalFormatted;
+  } else {
+    document.getElementById("tabMem").textContent = `${tabs.length} tabs`;
+    document.getElementById("totalMem").textContent = `${tabs.length} tabs`;
+  }
 }
 
-function renderTabList(tabs) {
+function renderTabList(tabs, memoryAvailable) {
   const container = document.getElementById("tabList");
 
   if (!tabs || tabs.length === 0) {
@@ -66,8 +80,7 @@ function renderTabList(tabs) {
     return;
   }
 
-  // Find max memory for bar scaling
-  const maxMem = Math.max(...tabs.map((t) => t.memoryMB), 100);
+  const maxMem = memoryAvailable ? Math.max(...tabs.map((t) => t.memoryMB), 100) : 0;
 
   container.innerHTML = tabs
     .map((t) => {
@@ -75,45 +88,56 @@ function renderTabList(tabs) {
       let dotClass = "dot-active";
       if (t.active) dotClass = "dot-current";
       else if (t.discarded) dotClass = "dot-sleeping";
-      else if (t.memoryMB > 500) dotClass = "dot-heavy";
+      else if (memoryAvailable && t.memoryMB > 500) dotClass = "dot-heavy";
 
       // Memory bar
-      const barPercent = Math.min(100, (t.memoryMB / maxMem) * 100);
-      let barColor = "#4caf50";
-      if (t.memoryMB > 800) barColor = "#d32f2f";
-      else if (t.memoryMB > 400) barColor = "#f57c00";
-      else if (t.memoryMB > 200) barColor = "#ffc107";
+      let barHtml;
+      if (memoryAvailable && t.memoryMB > 0) {
+        const barPercent = Math.min(100, (t.memoryMB / maxMem) * 100);
+        let barColor = "#4caf50";
+        if (t.memoryMB > 800) barColor = "#d32f2f";
+        else if (t.memoryMB > 400) barColor = "#f57c00";
+        else if (t.memoryMB > 200) barColor = "#ffc107";
 
-      const memText =
-        t.memoryMB >= 1000
+        const memText = t.memoryMB >= 1000
           ? `${(t.memoryMB / 1000).toFixed(1)}G`
-          : t.memoryMB > 0
-          ? `${Math.round(t.memoryMB)}M`
-          : t.discarded
-          ? "zzz"
-          : "?";
+          : `${Math.round(t.memoryMB)}M`;
+
+        barHtml = `
+          <div class="mem-bar">
+            <div class="fill" style="width:${barPercent}%;background:${barColor}"></div>
+            <span class="mem-text">${memText}</span>
+          </div>`;
+      } else if (t.discarded) {
+        barHtml = `<div class="mem-bar"><span class="mem-text">💤</span></div>`;
+      } else {
+        barHtml = `<div class="mem-bar"><span class="mem-text">--</span></div>`;
+      }
 
       const itemClass = t.discarded ? "tab-item discarded" : "tab-item";
       const pinned = t.pinned ? "📌 " : "";
-      const title = truncate(t.title, 38);
+      const title = truncate(t.title, 35);
+
+      // Per-tab action buttons (only for non-active, non-discarded tabs)
+      let actionsHtml = "";
+      if (!t.discarded && !t.active) {
+        actionsHtml = `
+          <div class="tab-actions">
+            <button data-tab-action="deep" data-tab-id="${t.tabId}" title="Deep Clean">🧹</button>
+            <button data-tab-action="discard" data-tab-id="${t.tabId}" title="Discard">💤</button>
+          </div>`;
+      }
 
       return `
         <div class="${itemClass}" data-tab-id="${t.tabId}">
           <span class="status-dot ${dotClass}"></span>
-          <div class="mem-bar">
-            <div class="fill" style="width:${barPercent}%;background:${barColor}"></div>
-            <span class="mem-text">${memText}</span>
-          </div>
+          ${barHtml}
           <div class="tab-info">
             <div class="tab-title">${pinned}${escapeHtml(title)}</div>
             <div class="tab-host">${escapeHtml(t.hostname)}</div>
           </div>
-          <div class="tab-actions">
-            ${!t.discarded && !t.active ? `<button data-tab-action="deep" data-tab-id="${t.tabId}" title="Deep Clean">🧹</button>` : ""}
-            ${!t.discarded && !t.active ? `<button data-tab-action="discard" data-tab-id="${t.tabId}" title="Discard">💤</button>` : ""}
-          </div>
-        </div>
-      `;
+          ${actionsHtml}
+        </div>`;
     })
     .join("");
 
@@ -124,13 +148,11 @@ function renderTabList(tabs) {
       const tabId = parseInt(btn.dataset.tabId);
       const action = btn.dataset.tabAction;
 
+      btn.style.opacity = "0.3";
+      btn.style.pointerEvents = "none";
+
       try {
-        const tab = await chrome.tabs.get(tabId);
-        if (action === "deep") {
-          await chrome.runtime.sendMessage({ type: "action", action: "deep" });
-        } else if (action === "discard") {
-          await chrome.tabs.discard(tabId);
-        }
+        await chrome.runtime.sendMessage({ type: "action-tab", tabId, action });
         showToast(action === "deep" ? "🧹 Cleaned!" : "💤 Discarded!");
         setTimeout(loadData, 600);
       } catch (err) {
@@ -176,14 +198,12 @@ function bindActions() {
 // ─── Helpers ───────────────────────────────────────────────────────
 
 function getToastMessage(action) {
-  const messages = {
+  return {
     soft: "⚡ Hard reloaded",
     deep: "🧹 Cache + storage cleared",
     nuke: "💣 All site data nuked",
     "discard-others": "💤 Other tabs sleeping",
-    "discard-by-memory": "📉 Heavy tabs discarded",
-  };
-  return messages[action] || "Done!";
+  }[action] || "Done!";
 }
 
 function showToast(message) {

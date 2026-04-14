@@ -1,17 +1,19 @@
 {
   "manifest_version": 3,
   "name": "Tab Memory Cleaner",
-  "version": "2.0.0",
-  "description": "See real memory per tab. Auto-clean heavy sites. Deep clean cache, IndexedDB & Service Workers with one click.",
+  "version": "2.1.0",
+  "description": "See system RAM, manage tabs, deep clean cache & IndexedDB with one click. Auto-discard heavy tabs.",
   "permissions": [
     "contextMenus",
     "activeTab",
     "browsingData",
     "storage",
-    "processes",
     "system.memory",
     "alarms",
     "notifications"
+  ],
+  "optional_permissions": [
+    "processes"
   ],
   "background": {
     "service_worker": "src/background.js"
