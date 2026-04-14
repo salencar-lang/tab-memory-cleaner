@@ -66,9 +66,11 @@ function renderSystemBar(data) {
       : `${Math.round(totalMB)} MB`;
     document.getElementById("tabMem").textContent = totalFormatted;
     document.getElementById("totalMem").textContent = totalFormatted;
+    document.getElementById("sectionTitle").textContent = "Tabs by memory usage";
   } else {
-    document.getElementById("tabMem").textContent = `${tabs.length} tabs`;
-    document.getElementById("totalMem").textContent = `${tabs.length} tabs`;
+    document.getElementById("tabMem").textContent = `${activeCount + sleepCount} total`;
+    document.getElementById("totalMem").textContent = `${activeCount} active`;
+    document.getElementById("sectionTitle").textContent = "Open tabs";
   }
 }
 
@@ -90,28 +92,30 @@ function renderTabList(tabs, memoryAvailable) {
       else if (t.discarded) dotClass = "dot-sleeping";
       else if (memoryAvailable && t.memoryMB > 500) dotClass = "dot-heavy";
 
-      // Memory bar
-      let barHtml;
-      if (memoryAvailable && t.memoryMB > 0) {
-        const barPercent = Math.min(100, (t.memoryMB / maxMem) * 100);
-        let barColor = "#4caf50";
-        if (t.memoryMB > 800) barColor = "#d32f2f";
-        else if (t.memoryMB > 400) barColor = "#f57c00";
-        else if (t.memoryMB > 200) barColor = "#ffc107";
+      // Memory bar (only show when data is available)
+      let barHtml = "";
+      if (memoryAvailable) {
+        if (t.memoryMB > 0) {
+          const barPercent = Math.min(100, (t.memoryMB / maxMem) * 100);
+          let barColor = "#4caf50";
+          if (t.memoryMB > 800) barColor = "#d32f2f";
+          else if (t.memoryMB > 400) barColor = "#f57c00";
+          else if (t.memoryMB > 200) barColor = "#ffc107";
 
-        const memText = t.memoryMB >= 1000
-          ? `${(t.memoryMB / 1000).toFixed(1)}G`
-          : `${Math.round(t.memoryMB)}M`;
+          const memText = t.memoryMB >= 1000
+            ? `${(t.memoryMB / 1000).toFixed(1)}G`
+            : `${Math.round(t.memoryMB)}M`;
 
-        barHtml = `
-          <div class="mem-bar">
-            <div class="fill" style="width:${barPercent}%;background:${barColor}"></div>
-            <span class="mem-text">${memText}</span>
-          </div>`;
+          barHtml = `
+            <div class="mem-bar">
+              <div class="fill" style="width:${barPercent}%;background:${barColor}"></div>
+              <span class="mem-text">${memText}</span>
+            </div>`;
+        } else if (t.discarded) {
+          barHtml = `<div class="mem-bar"><span class="mem-text">💤</span></div>`;
+        }
       } else if (t.discarded) {
-        barHtml = `<div class="mem-bar"><span class="mem-text">💤</span></div>`;
-      } else {
-        barHtml = `<div class="mem-bar"><span class="mem-text">--</span></div>`;
+        barHtml = `<span class="status-label sleeping">sleeping</span>`;
       }
 
       const itemClass = t.discarded ? "tab-item discarded" : "tab-item";

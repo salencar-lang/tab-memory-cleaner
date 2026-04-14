@@ -187,6 +187,18 @@
     .tab-item.discarded { opacity: 0.4; }
     .tab-item.discarded .tab-title { font-style: italic; }
 
+    .status-label {
+      font-size: 9px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .status-label.sleeping {
+      background: #f0f0f0;
+      color: #999;
+    }
+
     .tab-item .status-dot {
       width: 6px; height: 6px;
       border-radius: 50%;
@@ -294,7 +306,7 @@
   </div>
 
   <div class="section-title">
-    <span>Tabs by memory usage</span>
+    <span id="sectionTitle">Tabs by memory usage</span>
     <span class="total-mem" id="totalMem">--</span>
   </div>
 
