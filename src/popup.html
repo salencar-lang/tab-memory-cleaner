@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=400">
+  <meta name="viewport" content="width=420">
   <title>Tab Memory Cleaner</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      width: 380px;
-      max-height: 500px;
+      width: 420px;
+      max-height: 580px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 13px;
       color: #1a1a1a;
@@ -17,179 +17,190 @@
       overflow-y: auto;
     }
 
+    /* ─── Header ─────────────────────────────────────── */
     .header {
       background: linear-gradient(135deg, #1a73e8, #0d47a1);
       color: white;
-      padding: 14px 16px;
+      padding: 12px 16px;
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: space-between;
     }
-
-    .header h1 {
-      font-size: 15px;
-      font-weight: 600;
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header h1 { font-size: 15px; font-weight: 600; }
+    .header .logo { font-size: 20px; }
+    .header .settings-btn {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: white;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
     }
+    .header .settings-btn:hover { background: rgba(255,255,255,0.25); }
 
-    .header .logo {
-      font-size: 22px;
-    }
-
-    .stats {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 8px;
-      padding: 12px 16px;
+    /* ─── System Bar ─────────────────────────────────── */
+    .system-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
       background: white;
-      border-bottom: 1px solid #e0e0e0;
+      border-bottom: 1px solid #e8e8e8;
     }
-
-    .stat {
-      text-align: center;
+    .memory-ring {
+      width: 48px; height: 48px;
+      position: relative;
     }
-
-    .stat .number {
-      font-size: 22px;
-      font-weight: 700;
-      color: #1a73e8;
+    .memory-ring svg { transform: rotate(-90deg); }
+    .memory-ring .ring-text {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 11px; font-weight: 700;
+      color: #333;
     }
-
-    .stat .label {
-      font-size: 11px;
-      color: #666;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+    .system-stats { flex: 1; }
+    .system-stats .stat-row {
+      display: flex; justify-content: space-between;
+      font-size: 12px; color: #666;
+      padding: 1px 0;
     }
+    .system-stats .stat-row .val { font-weight: 600; color: #333; }
 
+    /* ─── Quick Actions ──────────────────────────────── */
     .actions {
-      padding: 12px 16px;
+      padding: 8px 12px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .action-btn {
+      flex: 1;
+      min-width: 90px;
       display: flex;
       flex-direction: column;
-      gap: 6px;
-    }
-
-    .actions h2 {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #888;
-      margin-bottom: 4px;
-    }
-
-    .btn {
-      display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
+      gap: 4px;
+      padding: 10px 6px;
       border: 1px solid #e0e0e0;
-      border-radius: 8px;
+      border-radius: 10px;
       background: white;
       cursor: pointer;
-      transition: all 0.15s ease;
-      text-align: left;
+      transition: all 0.15s;
+      text-align: center;
     }
+    .action-btn:hover { background: #f0f6ff; border-color: #1a73e8; }
+    .action-btn:active { transform: scale(0.97); }
+    .action-btn .icon { font-size: 20px; }
+    .action-btn .label { font-size: 11px; font-weight: 600; color: #333; }
+    .action-btn .shortcut { font-size: 9px; color: #999; }
+    .action-btn.danger { border-color: #ffcdd2; }
+    .action-btn.danger:hover { background: #fff5f5; border-color: #e53935; }
 
-    .btn:hover {
-      background: #f0f6ff;
-      border-color: #1a73e8;
-    }
-
-    .btn:active {
-      transform: scale(0.98);
-    }
-
-    .btn .icon { font-size: 18px; flex-shrink: 0; }
-    .btn .text { flex: 1; }
-    .btn .text .title { font-weight: 600; font-size: 13px; }
-    .btn .text .desc { font-size: 11px; color: #888; margin-top: 2px; }
-
-    .btn.danger { border-color: #ffcdd2; }
-    .btn.danger:hover { background: #fff5f5; border-color: #e53935; }
-
-    .tab-list {
-      padding: 8px 16px 16px;
-    }
-
-    .tab-list h2 {
-      font-size: 11px;
+    /* ─── Tab List ────────────────────────────────────── */
+    .section-title {
+      font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #888;
-      margin-bottom: 8px;
+      letter-spacing: 0.8px;
+      color: #999;
+      padding: 8px 16px 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
+    .section-title .total-mem { font-weight: 700; color: #1a73e8; }
+
+    .tab-list { padding: 0 8px 8px; }
 
     .tab-item {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 8px;
-      border-radius: 6px;
-      font-size: 12px;
+      padding: 7px 8px;
+      border-radius: 8px;
       cursor: default;
+      transition: background 0.1s;
     }
-
     .tab-item:hover { background: #f5f5f5; }
 
-    .tab-item .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
+    .tab-item .mem-bar {
+      width: 48px; height: 20px;
+      background: #f0f0f0;
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
       flex-shrink: 0;
     }
+    .tab-item .mem-bar .fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+    .tab-item .mem-bar .mem-text {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 9px;
+      font-weight: 700;
+      color: #333;
+      white-space: nowrap;
+    }
 
-    .tab-item .dot.active { background: #4caf50; }
-    .tab-item .dot.discarded { background: #bdbdbd; }
-    .tab-item .dot.current { background: #1a73e8; }
-
+    .tab-item .tab-info { flex: 1; min-width: 0; }
     .tab-item .tab-title {
-      flex: 1;
+      font-size: 12px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      color: #333;
     }
-
     .tab-item .tab-host {
+      font-size: 10px;
       color: #999;
-      font-size: 11px;
-      flex-shrink: 0;
     }
 
-    .tab-item.is-discarded { opacity: 0.5; }
-
-    .history {
-      padding: 8px 16px 16px;
-      border-top: 1px solid #e0e0e0;
+    .tab-item .tab-actions {
+      display: flex;
+      gap: 2px;
+      opacity: 0;
+      transition: opacity 0.15s;
     }
+    .tab-item:hover .tab-actions { opacity: 1; }
 
-    .history h2 {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #888;
-      margin-bottom: 8px;
-    }
-
-    .history-item {
+    .tab-item .tab-actions button {
+      background: none;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 2px 6px;
+      cursor: pointer;
       font-size: 11px;
       color: #666;
-      padding: 3px 0;
-      display: flex;
-      justify-content: space-between;
+    }
+    .tab-item .tab-actions button:hover {
+      background: #1a73e8;
+      color: white;
+      border-color: #1a73e8;
     }
 
-    .history-item .time { color: #999; }
+    .tab-item.discarded { opacity: 0.4; }
+    .tab-item.discarded .tab-title { font-style: italic; }
 
-    .empty {
-      text-align: center;
-      color: #999;
-      padding: 20px;
-      font-size: 12px;
+    .tab-item .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
     }
+    .dot-active { background: #4caf50; }
+    .dot-current { background: #1a73e8; }
+    .dot-sleeping { background: #bdbdbd; }
+    .dot-heavy { background: #f44336; }
 
+    /* ─── Toast ───────────────────────────────────────── */
     .toast {
       position: fixed;
-      bottom: 12px;
-      left: 50%;
+      bottom: 12px; left: 50%;
       transform: translateX(-50%) translateY(60px);
       background: #323232;
       color: white;
@@ -197,77 +208,101 @@
       border-radius: 20px;
       font-size: 12px;
       font-weight: 500;
-      transition: transform 0.3s ease;
+      transition: transform 0.3s;
       z-index: 100;
       white-space: nowrap;
     }
+    .toast.show { transform: translateX(-50%) translateY(0); }
 
-    .toast.show {
-      transform: translateX(-50%) translateY(0);
+    /* ─── Loading ─────────────────────────────────────── */
+    .loading {
+      text-align: center;
+      padding: 30px;
+      color: #999;
     }
+    .loading .spinner {
+      display: inline-block;
+      width: 24px; height: 24px;
+      border: 3px solid #e0e0e0;
+      border-top-color: #1a73e8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div class="header">
-    <span class="logo">🧹</span>
-    <h1>Tab Memory Cleaner</h1>
+    <div class="header-left">
+      <span class="logo">🧹</span>
+      <h1>Tab Memory Cleaner</h1>
+    </div>
+    <button class="settings-btn" id="settingsBtn" title="Settings">⚙️</button>
   </div>
 
-  <div class="stats">
-    <div class="stat">
-      <div class="number" id="total">-</div>
-      <div class="label">Total</div>
+  <div class="system-bar">
+    <div class="memory-ring">
+      <svg width="48" height="48" viewBox="0 0 48 48">
+        <circle cx="24" cy="24" r="20" fill="none" stroke="#e8e8e8" stroke-width="5"/>
+        <circle cx="24" cy="24" r="20" fill="none" stroke="#1a73e8" stroke-width="5"
+          stroke-dasharray="125.6" stroke-dashoffset="125.6" stroke-linecap="round" id="memRing"/>
+      </svg>
+      <span class="ring-text" id="memPercent">--%</span>
     </div>
-    <div class="stat">
-      <div class="number" id="active">-</div>
-      <div class="label">Active</div>
-    </div>
-    <div class="stat">
-      <div class="number" id="discarded">-</div>
-      <div class="label">Sleeping</div>
+    <div class="system-stats">
+      <div class="stat-row">
+        <span>System RAM</span>
+        <span class="val" id="sysRam">--</span>
+      </div>
+      <div class="stat-row">
+        <span>Chrome tabs</span>
+        <span class="val" id="tabCount">--</span>
+      </div>
+      <div class="stat-row">
+        <span>Tab memory</span>
+        <span class="val" id="tabMem">--</span>
+      </div>
     </div>
   </div>
 
   <div class="actions">
-    <h2>Quick Actions (current tab)</h2>
-    <button class="btn" data-action="soft">
+    <button class="action-btn" data-action="soft">
       <span class="icon">⚡</span>
-      <span class="text">
-        <div class="title">Soft Clean</div>
-        <div class="desc">Hard reload — flushes JS memory</div>
-      </span>
+      <span class="label">Soft</span>
+      <span class="shortcut">Alt+1</span>
     </button>
-    <button class="btn" data-action="deep">
+    <button class="action-btn" data-action="deep">
       <span class="icon">🧹</span>
-      <span class="text">
-        <div class="title">Deep Clean</div>
-        <div class="desc">Clear cache + storage + reload (keeps login)</div>
-      </span>
+      <span class="label">Deep</span>
+      <span class="shortcut">Alt+2</span>
     </button>
-    <button class="btn danger" data-action="nuke">
+    <button class="action-btn danger" data-action="nuke">
       <span class="icon">💣</span>
-      <span class="text">
-        <div class="title">Nuke & Reload</div>
-        <div class="desc">Clear EVERYTHING + reload (logs you out)</div>
-      </span>
+      <span class="label">Nuke</span>
+      <span class="shortcut">Alt+3</span>
     </button>
-    <button class="btn" data-action="discard-others">
+    <button class="action-btn" data-action="discard-others">
       <span class="icon">💤</span>
-      <span class="text">
-        <div class="title">Discard Other Tabs</div>
-        <div class="desc">Put all other tabs to sleep</div>
-      </span>
+      <span class="label">Sleep All</span>
+      <span class="shortcut">Alt+0</span>
+    </button>
+    <button class="action-btn" data-action="discard-by-memory">
+      <span class="icon">📉</span>
+      <span class="label">Kill Heavy</span>
+      <span class="shortcut">>500MB</span>
     </button>
   </div>
 
-  <div class="tab-list">
-    <h2>Tabs in this window</h2>
-    <div id="tabs"></div>
+  <div class="section-title">
+    <span>Tabs by memory usage</span>
+    <span class="total-mem" id="totalMem">--</span>
   </div>
 
-  <div class="history">
-    <h2>Recent actions</h2>
-    <div id="history"></div>
+  <div class="tab-list" id="tabList">
+    <div class="loading">
+      <div class="spinner"></div>
+      <div style="margin-top:8px">Reading memory...</div>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>

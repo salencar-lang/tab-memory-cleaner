@@ -1,13 +1,17 @@
 {
   "manifest_version": 3,
   "name": "Tab Memory Cleaner",
-  "version": "1.2.0",
-  "description": "Free tab memory with one click or keyboard shortcut. Discard, clear site data, or hard reload.",
+  "version": "2.0.0",
+  "description": "See real memory per tab. Auto-clean heavy sites. Deep clean cache, IndexedDB & Service Workers with one click.",
   "permissions": [
     "contextMenus",
     "activeTab",
     "browsingData",
-    "storage"
+    "storage",
+    "processes",
+    "system.memory",
+    "alarms",
+    "notifications"
   ],
   "background": {
     "service_worker": "src/background.js"
@@ -20,6 +24,10 @@
       "128": "icons/icon128.png"
     }
   },
+  "options_ui": {
+    "page": "src/options.html",
+    "open_in_tab": false
+  },
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -27,27 +35,19 @@
   },
   "commands": {
     "soft-clean": {
-      "suggested_key": {
-        "default": "Alt+1"
-      },
+      "suggested_key": { "default": "Alt+1" },
       "description": "Soft Clean — hard reload current tab"
     },
     "deep-clean": {
-      "suggested_key": {
-        "default": "Alt+2"
-      },
+      "suggested_key": { "default": "Alt+2" },
       "description": "Deep Clean — clear cache + reload (keeps login)"
     },
     "nuke-reload": {
-      "suggested_key": {
-        "default": "Alt+3"
-      },
+      "suggested_key": { "default": "Alt+3" },
       "description": "Nuke & Reload — clear ALL site data + reload"
     },
     "discard-others": {
-      "suggested_key": {
-        "default": "Alt+0"
-      },
+      "suggested_key": { "default": "Alt+0" },
       "description": "Discard all other tabs"
     }
   },
