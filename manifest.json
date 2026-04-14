@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Tab Memory Cleaner",
-  "version": "1.0.0",
-  "description": "Right-click any tab to free memory. Discard, clear site data, or hard reload with one click.",
+  "version": "1.1.0",
+  "description": "Free tab memory with one click or keyboard shortcut. Discard, clear site data, or hard reload.",
   "permissions": [
     "contextMenus",
     "tabs",
@@ -27,6 +27,32 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "commands": {
+    "soft-clean": {
+      "suggested_key": {
+        "default": "Alt+1"
+      },
+      "description": "Soft Clean — hard reload current tab"
+    },
+    "deep-clean": {
+      "suggested_key": {
+        "default": "Alt+2"
+      },
+      "description": "Deep Clean — clear cache + reload (keeps login)"
+    },
+    "nuke-reload": {
+      "suggested_key": {
+        "default": "Alt+3"
+      },
+      "description": "Nuke & Reload — clear ALL site data + reload"
+    },
+    "discard-others": {
+      "suggested_key": {
+        "default": "Alt+0"
+      },
+      "description": "Discard all other tabs"
+    }
   },
   "minimum_chrome_version": "116"
 }

@@ -292,6 +292,28 @@ function logAction(action, tab) {
   console.log(`[TMC] ${action} → ${entry.url}`);
 }
 
+// ─── Keyboard Shortcut Handler ─────────────────────────────────────
+
+chrome.commands.onCommand.addListener(async (command) => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab) return;
+
+  switch (command) {
+    case "soft-clean":
+      await softClean(tab);
+      break;
+    case "deep-clean":
+      await deepClean(tab);
+      break;
+    case "nuke-reload":
+      await nukeAndReload(tab);
+      break;
+    case "discard-others":
+      await discardOtherTabs(tab);
+      break;
+  }
+});
+
 // ─── Message handler for popup ─────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
