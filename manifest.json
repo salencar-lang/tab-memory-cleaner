@@ -1,16 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Tab Memory Cleaner",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Free tab memory with one click or keyboard shortcut. Discard, clear site data, or hard reload.",
   "permissions": [
     "contextMenus",
-    "tabs",
+    "activeTab",
     "browsingData",
     "storage"
-  ],
-  "host_permissions": [
-    "<all_urls>"
   ],
   "background": {
     "service_worker": "src/background.js"
